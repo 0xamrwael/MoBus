@@ -127,6 +127,16 @@ public class BusManager {
         }
     }
     
+    public boolean markSeatAsUnpaid(int seatId) throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String updateSeat = "UPDATE seats SET status = 'RESERVED_NOT_PAID' WHERE seat_id = ?";
+            PreparedStatement updateStmt = conn.prepareStatement(updateSeat);
+            updateStmt.setInt(1, seatId);
+            int rowsAffected = updateStmt.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+    
     public Map<String, Color> getSeatColorScheme() {
         Map<String, Color> colorScheme = new HashMap<>();
         colorScheme.put("AVAILABLE", Color.WHITE);

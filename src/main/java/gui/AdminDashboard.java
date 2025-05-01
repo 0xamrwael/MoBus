@@ -28,7 +28,7 @@ public class AdminDashboard extends JFrame {
     public AdminDashboard() {
         setTitle("Admin Dashboard - MoBus");
         setSize(1000, 700);
-        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
     
         //main panel
@@ -327,6 +327,23 @@ public class AdminDashboard extends JFrame {
                 }
             });
             infoPanel.add(paymentButton);
+        } else if ("RESERVED".equals(status)) {
+            JButton unpaidButton = new JButton("Mark as Unpaid");
+            unpaidButton.addActionListener(e -> {
+                try {
+                    boolean success = busManager.markSeatAsUnpaid(Integer.parseInt(seatId));
+                    if (success) {
+                        JOptionPane.showMessageDialog(this, "Seat marked as unpaid successfully!");
+                        // Refresh the view
+                        viewSeats(new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "refresh"));
+                    } else {
+                        JOptionPane.showMessageDialog(this, "Failed to mark seat as unpaid.");
+                    }
+                } catch (SQLException ex) {
+                    JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+                }
+            });
+            infoPanel.add(unpaidButton);
         }
         
         travelerInfoPanel.add(infoPanel, BorderLayout.NORTH);
