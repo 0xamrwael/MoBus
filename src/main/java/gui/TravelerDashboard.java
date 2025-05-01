@@ -4,7 +4,6 @@
  */
 package gui;
 import database.BusManager;
-import database.DatabaseConnection;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
