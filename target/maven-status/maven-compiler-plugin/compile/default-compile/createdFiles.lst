@@ -1,4 +1,5 @@
 com\amr\mobus\MoBus.class
+gui\NavigationManager.class
 gui\TravelerDashboard.class
 database\BusManager.class
 gui\AdminDashboard.class

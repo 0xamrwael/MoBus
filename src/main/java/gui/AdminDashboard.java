@@ -10,6 +10,8 @@ import java.awt.event.ActionEvent;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 /**
  *
  * @author Amr
@@ -18,17 +20,32 @@ public class AdminDashboard extends JFrame {
     private BusManager busManager = new BusManager();
     private JTextField busNameField, rowsField, columnsField;
     private JTextArea unavailableSeatsArea;
-    private JTextField busIdField;
+    private JComboBox<String> busComboBox;
     private JPanel seatPanel;
+    private JPanel travelerInfoPanel;
+    private Map<String, Integer> busNameToIdMap = new HashMap<>();
 
     public AdminDashboard() {
         setTitle("Admin Dashboard - MoBus");
-        setSize(800, 600);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(1000, 700);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
-
-        // Add Bus Panel
-        JPanel addBusPanel = new JPanel(new GridLayout(5, 2));
+    
+        //main panel
+        JPanel mainContentPanel = new JPanel(new BorderLayout());
+        
+        //back button
+        JPanel topPanel = new JPanel(new BorderLayout());
+        JButton backButton = new JButton("← Back");
+        backButton.addActionListener(e -> NavigationManager.getInstance().goBack());
+        topPanel.add(backButton, BorderLayout.WEST);
+        
+        //add to top
+        add(topPanel, BorderLayout.NORTH);
+        
+        //add bus panel
+        JPanel addBusPanel = new JPanel(new GridLayout(5, 2, 10, 10));
+        addBusPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         addBusPanel.add(new JLabel("Bus Name:"));
         busNameField = new JTextField();
         addBusPanel.add(busNameField);
@@ -45,21 +62,85 @@ public class AdminDashboard extends JFrame {
         addBusButton.addActionListener(this::addBus);
         addBusPanel.add(addBusButton);
 
-        // View Seats Panel
-        JPanel viewPanel = new JPanel();
-        viewPanel.add(new JLabel("Bus ID:"));
-        busIdField = new JTextField(10);
-        viewPanel.add(busIdField);
-        JButton viewSeatsButton = new JButton("View Seats");
+        //view seats drop down
+        JPanel viewPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        viewPanel.setBorder(BorderFactory.createTitledBorder("Bus Selection"));
+        viewPanel.add(new JLabel("Select Bus:"));
+        
+        //bus dropdown
+        busComboBox = new JComboBox<>();
+        busComboBox.setPreferredSize(new Dimension(200, 25));
+        viewPanel.add(busComboBox);
+        
+        JButton viewSeatsButton = new JButton("View Bus");
         viewSeatsButton.addActionListener(this::viewSeats);
         viewPanel.add(viewSeatsButton);
+        
+        //refresh
+        JButton refreshButton = new JButton("Refresh Bus List");
+        refreshButton.addActionListener(e -> loadBusList());
+        viewPanel.add(refreshButton);
+        
+        //color legend
+        JPanel legendPanel = createColorLegendPanel();
+        viewPanel.add(legendPanel);
 
+        //split for seat display and traveler info
+        //70% seat panel,30% traveler info
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setResizeWeight(0.7);
+        
+        //seat scroll pane
         seatPanel = new JPanel();
-        seatPanel.setPreferredSize(new Dimension(400, 400));
+        JScrollPane seatScrollPane = new JScrollPane(seatPanel);
+        seatScrollPane.setPreferredSize(new Dimension(600, 300));
+        seatScrollPane.setBorder(BorderFactory.createTitledBorder("Seat Arrangement"));
+        splitPane.setLeftComponent(seatScrollPane);
+        
+        //traveler info
+        travelerInfoPanel = new JPanel(new BorderLayout());
+        travelerInfoPanel.setBorder(BorderFactory.createTitledBorder("Traveler Information"));
+        JLabel noSelectionLabel = new JLabel("Select a seat to view traveler information", SwingConstants.CENTER);
+        travelerInfoPanel.add(noSelectionLabel, BorderLayout.CENTER);
+        splitPane.setRightComponent(travelerInfoPanel);
 
-        add(addBusPanel, BorderLayout.NORTH);
-        add(viewPanel, BorderLayout.CENTER);
-        add(seatPanel, BorderLayout.SOUTH);
+        //add to main
+        mainContentPanel.add(addBusPanel, BorderLayout.NORTH);
+        mainContentPanel.add(viewPanel, BorderLayout.CENTER);
+        mainContentPanel.add(splitPane, BorderLayout.SOUTH);
+        
+        //add main to the frame
+        add(mainContentPanel, BorderLayout.CENTER);
+        
+        //load
+        loadBusList();
+    }
+    
+    private JPanel createColorLegendPanel() {
+        JPanel legendPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 5));
+        legendPanel.setBorder(BorderFactory.createTitledBorder("Color Legend"));
+        
+        Map<String, Color> colorScheme = busManager.getSeatColorScheme();
+        String[] descriptions = busManager.getSeatStatusDescriptions();
+        
+        String[] statuses = {"AVAILABLE", "RESERVED", "RESERVED_NOT_PAID", "UNAVAILABLE"};
+        
+        for (int i = 0; i < statuses.length; i++) {
+            JPanel colorBox = new JPanel();
+            colorBox.setPreferredSize(new Dimension(20, 20));
+            colorBox.setBackground(colorScheme.get(statuses[i]));
+            colorBox.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+            
+            JLabel descLabel = new JLabel(descriptions[i]);
+            
+            JPanel itemPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            itemPanel.add(colorBox);
+            itemPanel.add(descLabel);
+            
+            legendPanel.add(itemPanel);
+        }
+        
+        return legendPanel;
     }
 
     private void addBus(ActionEvent e) {
@@ -82,46 +163,174 @@ public class AdminDashboard extends JFrame {
         }
     }
 
+    private void loadBusList() {
+        busComboBox.removeAllItems();
+        busNameToIdMap.clear();
+        
+        try {
+            busNameToIdMap = busManager.loadBusList();
+            
+            busComboBox.addItem("-- Select a Bus --");
+            
+            for (String displayName : busNameToIdMap.keySet()) {
+                busComboBox.addItem(displayName);
+            }
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(this, "Error loading buses: " + ex.getMessage(),
+                    "Database Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private void viewSeats(ActionEvent e) {
         try {
-            int busId = Integer.parseInt(busIdField.getText());
-            List<String[]> seats = busManager.getBusSeats(busId);
+            String selectedBus = (String) busComboBox.getSelectedItem();
+            
+            //if selected bus
+            if (selectedBus == null || selectedBus.equals("-- Select a Bus --")) {
+                JOptionPane.showMessageDialog(this, 
+                    "Please select a bus from the dropdown!", 
+                    "Validation Error", 
+                    JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            
+            //bus id from map
+            Integer busId = busNameToIdMap.get(selectedBus);
+            
+            if (busId == null) {
+                JOptionPane.showMessageDialog(this, 
+                    "Invalid bus selection!", 
+                    "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            
+            List<String[]> seats = busManager.getBusSeatsWithTravelerInfo(busId);
             seatPanel.removeAll();
-            seatPanel.setLayout(new GridLayout(0, 0)); // Will be set dynamically
+            
+            //max row and col
             int maxRow = 0, maxCol = 0;
             for (String[] seat : seats) {
                 maxRow = Math.max(maxRow, Integer.parseInt(seat[0]));
                 maxCol = Math.max(maxCol, Integer.parseInt(seat[1]));
             }
-            seatPanel.setLayout(new GridLayout(maxRow, maxCol));
-            JButton[][] seatButtons = new JButton[maxRow + 1][maxCol + 1];
-            for (String[] seat : seats) {
-                int row = Integer.parseInt(seat[0]);
-                int col = Integer.parseInt(seat[1]);
-                String status = seat[2];
-                JButton seatButton = new JButton();
-                seatButton.setPreferredSize(new Dimension(30, 30));
-                switch (status) {
-                    case "AVAILABLE":
-                        seatButton.setBackground(Color.WHITE);
-                        break;
-                    case "RESERVED":
-                        seatButton.setBackground(Color.GREEN);
-                        break;
-                    case "RESERVED_NOT_PAID":
-                        seatButton.setBackground(Color.GRAY);
-                        break;
-                    case "UNAVAILABLE":
-                        seatButton.setBackground(Color.RED);
-                        break;
+            
+            seatPanel.setLayout(new GridLayout(maxRow + 1, maxCol + 1));
+            
+            //empty panels for array
+            for (int r = 0; r <= maxRow; r++) {
+                for (int c = 0; c <= maxCol; c++) {
+                    JPanel emptyPanel = new JPanel();
+                    seatPanel.add(emptyPanel);
                 }
-                seatButtons[row][col] = seatButton;
-                seatPanel.add(seatButton);
             }
+            
+            //refresh
+            seatPanel.removeAll();
+            
+            //fix grid size
+            seatPanel.setLayout(new GridLayout(maxRow + 1, maxCol + 1));
+            
+            //add seat buttons
+            for (int r = 0; r <= maxRow; r++) {
+                for (int c = 0; c <= maxCol; c++) {
+                    //add in 0 row or 0 col 
+                    if (r == 0 || c == 0) {
+                        seatPanel.add(new JPanel());
+                        continue;
+                    }
+                    
+                    //get seat info
+                    String[] seatInfo = null;
+                    for (String[] seat : seats) {
+                        int seatRow = Integer.parseInt(seat[0]);
+                        int seatCol = Integer.parseInt(seat[1]);
+                        if (seatRow == r && seatCol == c) {
+                            seatInfo = seat;
+                            break;
+                        }
+                    }
+                    
+                    //empty if no seat
+                    if (seatInfo == null) {
+                        seatPanel.add(new JPanel());
+                        continue;
+                    }
+                    
+                    String status = seatInfo[2];
+                    String seatId = seatInfo[3];
+                    String travelerId = seatInfo[4];
+                    String travelerName = seatInfo[5];
+                    String travelerPhone = seatInfo[6];
+                    
+                    JButton seatButton = new JButton();
+                    seatButton.setPreferredSize(new Dimension(40, 40)); // Increased button size
+                    seatButton.setText(r + "," + c);
+                    seatButton.setFont(new Font("Arial", Font.PLAIN, 11)); // Increased font size
+                    
+                    Map<String, Color> colorScheme = busManager.getSeatColorScheme();
+                    seatButton.setBackground(colorScheme.get(status));
+                    
+                    //add action to buttons
+                    if (travelerId != null) {
+                        final String finalSeatId = seatId;
+                        final String finalTravelerId = travelerId;
+                        final String finalTravelerName = travelerName;
+                        final String finalTravelerPhone = travelerPhone;
+                        final String finalStatus = status;
+                        
+                        seatButton.addActionListener(evt -> {
+                            showTravelerInfo(finalSeatId, finalTravelerId, finalTravelerName, 
+                                            finalTravelerPhone, finalStatus, busId);
+                        });
+                    }
+                    
+                    seatPanel.add(seatButton);
+                }
+            }
+            
             seatPanel.revalidate();
             seatPanel.repaint();
         } catch (SQLException | NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
         }
+    }
+    
+    private void showTravelerInfo(String seatId, String travelerId, String travelerName, 
+                                 String travelerPhone, String status, int busId) {
+        travelerInfoPanel.removeAll();
+        
+        JPanel infoPanel = new JPanel(new GridLayout(0, 1, 5, 5));
+        infoPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        infoPanel.add(new JLabel("Seat ID: " + seatId));
+        infoPanel.add(new JLabel("Traveler ID: " + travelerId));
+        infoPanel.add(new JLabel("Name: " + travelerName));
+        infoPanel.add(new JLabel("Phone: " + travelerPhone));
+        infoPanel.add(new JLabel("Status: " + status));
+        
+        //payment
+        if ("RESERVED_NOT_PAID".equals(status)) {
+            JButton paymentButton = new JButton("Mark as Paid");
+            paymentButton.addActionListener(e -> {
+                try {
+                    boolean success = busManager.markSeatAsPaid(Integer.parseInt(seatId));
+                    if (success) {
+                        JOptionPane.showMessageDialog(this, "Payment processed successfully!");
+                        // Refresh the view
+                        viewSeats(new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "refresh"));
+                    } else {
+                        JOptionPane.showMessageDialog(this, "Failed to process payment.");
+                    }
+                } catch (SQLException ex) {
+                    JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+                }
+            });
+            infoPanel.add(paymentButton);
+        }
+        
+        travelerInfoPanel.add(infoPanel, BorderLayout.NORTH);
+        travelerInfoPanel.revalidate();
+        travelerInfoPanel.repaint();
     }
 }

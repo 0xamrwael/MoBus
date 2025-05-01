@@ -8,10 +8,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.awt.*;
 /**
  *
- * @author Khaled
+ * @author Amr
  */
 public class BusManager {
     public int addBus(String busName, int rows, int columns, List<int[]> unavailableSeats) throws SQLException {
@@ -63,5 +66,82 @@ public class BusManager {
             }
         }
         return seats;
+    }
+    
+    public Map<String, Integer> loadBusList() throws SQLException {
+        Map<String, Integer> busNameToIdMap = new HashMap<>();
+        
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "SELECT bus_id, bus_name FROM buses";
+            PreparedStatement stmt = conn.prepareStatement(query);
+            ResultSet rs = stmt.executeQuery();
+            
+            while (rs.next()) {
+                int busId = rs.getInt("bus_id");
+                String busName = rs.getString("bus_name");
+                String displayName = busName + " (ID: " + busId + ")";
+                
+                busNameToIdMap.put(displayName, busId);
+            }
+        }
+        return busNameToIdMap;
+    }
+    
+    public List<String[]> getBusSeatsWithTravelerInfo(int busId) throws SQLException {
+        List<String[]> seats = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String query = "SELECT s.seat_id, s.seat_row, s.seat_column, s.status, " +
+                          "t.traveler_id, t.name, t.phone_number " +
+                          "FROM seats s " +
+                          "LEFT JOIN reservations r ON s.seat_id = r.seat_id " +
+                          "LEFT JOIN travelers t ON r.traveler_id = t.traveler_id " +
+                          "WHERE s.bus_id = ?";
+            PreparedStatement stmt = conn.prepareStatement(query);
+            stmt.setInt(1, busId);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String[] seatInfo = new String[7];
+                seatInfo[0] = String.valueOf(rs.getInt("seat_row"));
+                seatInfo[1] = String.valueOf(rs.getInt("seat_column"));
+                seatInfo[2] = rs.getString("status");
+                seatInfo[3] = rs.getString("seat_id");
+                
+                // Traveler info might be null if seat is not reserved
+                seatInfo[4] = rs.getString("traveler_id"); // might be null
+                seatInfo[5] = rs.getString("name"); // might be null
+                seatInfo[6] = rs.getString("phone_number"); // might be null
+                
+                seats.add(seatInfo);
+            }
+        }
+        return seats;
+    }
+    
+    public boolean markSeatAsPaid(int seatId) throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String updateSeat = "UPDATE seats SET status = 'RESERVED' WHERE seat_id = ?";
+            PreparedStatement updateStmt = conn.prepareStatement(updateSeat);
+            updateStmt.setInt(1, seatId);
+            int rowsAffected = updateStmt.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+    
+    public Map<String, Color> getSeatColorScheme() {
+        Map<String, Color> colorScheme = new HashMap<>();
+        colorScheme.put("AVAILABLE", Color.WHITE);
+        colorScheme.put("RESERVED", Color.GREEN);
+        colorScheme.put("RESERVED_NOT_PAID", Color.GRAY);
+        colorScheme.put("UNAVAILABLE", Color.RED);
+        return colorScheme;
+    }
+    
+    public String[] getSeatStatusDescriptions() {
+        return new String[] {
+            "Available", 
+            "Reserved & Paid", 
+            "Reserved (Not Paid)", 
+            "Unavailable"
+        };
     }
 }
