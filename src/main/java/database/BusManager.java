@@ -91,7 +91,7 @@ public class BusManager {
         List<String[]> seats = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection()) {
             String query = "SELECT s.seat_id, s.seat_row, s.seat_column, s.status, " +
-                          "t.traveler_id, t.name, t.phone_number " +
+                          "r.traveler_id, t.name, t.phone_number " +
                           "FROM seats s " +
                           "LEFT JOIN reservations r ON s.seat_id = r.seat_id " +
                           "LEFT JOIN travelers t ON r.traveler_id = t.traveler_id " +
@@ -153,5 +153,95 @@ public class BusManager {
             "Reserved (Not Paid)", 
             "Unavailable"
         };
+    }
+    
+    public int loginTraveler(String phone, String name) throws SQLException {
+        int travelerId = -1;
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            //check number found
+            String query = "SELECT traveler_id, name FROM travelers WHERE phone_number = ?";
+            PreparedStatement stmt = conn.prepareStatement(query);
+            stmt.setString(1, phone);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                //number found validate name
+                String existingName = rs.getString("name");
+                if (existingName.equalsIgnoreCase(name)) {
+                    //name matches return id
+                    travelerId = rs.getInt("traveler_id");
+                } else {
+                    //name doesn't match
+                    travelerId = -2; //-2 name mismatch
+                }
+            } else {
+                String insert = "INSERT INTO travelers (phone_number, name) VALUES (?, ?)";
+                PreparedStatement insertStmt = conn.prepareStatement(insert, PreparedStatement.RETURN_GENERATED_KEYS);
+                insertStmt.setString(1, phone);
+                insertStmt.setString(2, name);
+                insertStmt.executeUpdate();
+                ResultSet generatedKeys = insertStmt.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    travelerId = generatedKeys.getInt(1);
+                }
+            }
+        }
+        return travelerId;
+    }
+    
+    public int getSeatId(int busId, int row, int col) throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            String selectSeat = "SELECT seat_id FROM seats WHERE bus_id = ? AND seat_row = ? AND seat_column = ?";
+            PreparedStatement selectStmt = conn.prepareStatement(selectSeat);
+            selectStmt.setInt(1, busId);
+            selectStmt.setInt(2, row);
+            selectStmt.setInt(3, col);
+            ResultSet rs = selectStmt.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("seat_id");
+            }
+            return -1;
+        }
+    }
+    
+    public boolean reserveSeat(int busId, int seatId, int travelerId) throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            //update seat status
+            String updateSeat = "UPDATE seats SET status = 'RESERVED_NOT_PAID' WHERE seat_id = ?";
+            PreparedStatement updateStmt = conn.prepareStatement(updateSeat);
+            updateStmt.setInt(1, seatId);
+            int rowsUpdated = updateStmt.executeUpdate();
+            
+            if (rowsUpdated > 0) {
+                //create reservation
+                String insertReservation = "INSERT INTO reservations (bus_id, seat_id, traveler_id) VALUES (?, ?, ?)";
+                PreparedStatement insertStmt = conn.prepareStatement(insertReservation);
+                insertStmt.setInt(1, busId);
+                insertStmt.setInt(2, seatId);
+                insertStmt.setInt(3, travelerId);
+                return insertStmt.executeUpdate() > 0;
+            }
+            return false;
+        }
+    }
+    
+    public boolean cancelReservation(int seatId, int travelerId) throws SQLException {
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            //delete reservation
+            String deleteReservation = "DELETE FROM reservations WHERE seat_id = ? AND traveler_id = ?";
+            PreparedStatement deleteStmt = conn.prepareStatement(deleteReservation);
+            deleteStmt.setInt(1, seatId);
+            deleteStmt.setInt(2, travelerId);
+            int rowsDeleted = deleteStmt.executeUpdate();
+            
+            if (rowsDeleted > 0) {
+                //update seat
+                String updateSeat = "UPDATE seats SET status = 'AVAILABLE' WHERE seat_id = ?";
+                PreparedStatement updateStmt = conn.prepareStatement(updateSeat);
+                updateStmt.setInt(1, seatId);
+                return updateStmt.executeUpdate() > 0;
+            }
+            return false;
+        }
     }
 }

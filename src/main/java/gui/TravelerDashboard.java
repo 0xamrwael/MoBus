@@ -162,28 +162,33 @@ public class TravelerDashboard extends JFrame {
             return;
         }
         
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            String query = "SELECT traveler_id FROM travelers WHERE phone_number = ?";
-            PreparedStatement stmt = conn.prepareStatement(query);
-            stmt.setString(1, phone);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                travelerId = rs.getInt("traveler_id");
+        try {
+            int result = busManager.loginTraveler(phone, name);
+            
+            if (result > 0) {
+                //login successful
+                travelerId = result;
                 JOptionPane.showMessageDialog(this, "Logged in successfully!");
+            } else if (result == -2) {
+                //mismatch
+                JOptionPane.showMessageDialog(this, 
+                    "This phone number is registered with a different name.", 
+                    "Authentication Error", 
+                    JOptionPane.ERROR_MESSAGE);
             } else {
-                String insert = "INSERT INTO travelers (phone_number, name) VALUES (?, ?)";
-                PreparedStatement insertStmt = conn.prepareStatement(insert, PreparedStatement.RETURN_GENERATED_KEYS);
-                insertStmt.setString(1, phone);
-                insertStmt.setString(2, name);
-                insertStmt.executeUpdate();
-                ResultSet generatedKeys = insertStmt.getGeneratedKeys();
-                if (generatedKeys.next()) {
-                    travelerId = generatedKeys.getInt(1);
-                    JOptionPane.showMessageDialog(this, "Registered and logged in successfully!");
-                }
+                //new
+                JOptionPane.showMessageDialog(this, "Registered and logged in successfully!");
             }
         } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+            //check duplicate
+            if (ex.getMessage().contains("Duplicate entry") && ex.getMessage().contains("phone_number")) {
+                JOptionPane.showMessageDialog(this, 
+                    "This phone number is already registered.", 
+                    "Registration Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+            }
         }
     }
 
@@ -305,29 +310,20 @@ public class TravelerDashboard extends JFrame {
     }
 
     private void reserveSeat(int busId, int row, int col) {
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            String selectSeat = "SELECT seat_id FROM seats WHERE bus_id = ? AND seat_row = ? AND seat_column = ?";
-            PreparedStatement selectStmt = conn.prepareStatement(selectSeat);
-            selectStmt.setInt(1, busId);
-            selectStmt.setInt(2, row);
-            selectStmt.setInt(3, col);
-            ResultSet rs = selectStmt.executeQuery();
-            if (rs.next()) {
-                int seatId = rs.getInt("seat_id");
-                String updateSeat = "UPDATE seats SET status = 'RESERVED_NOT_PAID' WHERE seat_id = ?";
-                PreparedStatement updateStmt = conn.prepareStatement(updateSeat);
-                updateStmt.setInt(1, seatId);
-                updateStmt.executeUpdate();
-
-                String insertReservation = "INSERT INTO reservations (bus_id, seat_id, traveler_id) VALUES (?, ?, ?)";
-                PreparedStatement insertStmt = conn.prepareStatement(insertReservation);
-                insertStmt.setInt(1, busId);
-                insertStmt.setInt(2, seatId);
-                insertStmt.setInt(3, travelerId);
-                insertStmt.executeUpdate();
-
-                JOptionPane.showMessageDialog(this, "Seat reserved!");
-                viewBus(null); // Refresh the view
+        try {
+            int seatId = busManager.getSeatId(busId, row, col);
+            
+            if (seatId > 0) {
+                boolean success = busManager.reserveSeat(busId, seatId, travelerId);
+                
+                if (success) {
+                    JOptionPane.showMessageDialog(this, "Seat reserved!");
+                    viewBus(null); // Refresh the view
+                } else {
+                    JOptionPane.showMessageDialog(this, "Failed to reserve seat.");
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Seat not found.");
             }
         } catch (SQLException ex) {
             JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
@@ -335,28 +331,20 @@ public class TravelerDashboard extends JFrame {
     }
 
     private void cancelReservation(int busId, int row, int col) {
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            String selectSeat = "SELECT seat_id FROM seats WHERE bus_id = ? AND seat_row = ? AND seat_column = ?";
-            PreparedStatement selectStmt = conn.prepareStatement(selectSeat);
-            selectStmt.setInt(1, busId);
-            selectStmt.setInt(2, row);
-            selectStmt.setInt(3, col);
-            ResultSet rs = selectStmt.executeQuery();
-            if (rs.next()) {
-                int seatId = rs.getInt("seat_id");
-                String deleteReservation = "DELETE FROM reservations WHERE seat_id = ? AND traveler_id = ?";
-                PreparedStatement deleteStmt = conn.prepareStatement(deleteReservation);
-                deleteStmt.setInt(1, seatId);
-                deleteStmt.setInt(2, travelerId);
-                deleteStmt.executeUpdate();
-
-                String updateSeat = "UPDATE seats SET status = 'AVAILABLE' WHERE seat_id = ?";
-                PreparedStatement updateStmt = conn.prepareStatement(updateSeat);
-                updateStmt.setInt(1, seatId);
-                updateStmt.executeUpdate();
-
-                JOptionPane.showMessageDialog(this, "Reservation canceled!");
-                viewBus(null); // Refresh the view
+        try {
+            int seatId = busManager.getSeatId(busId, row, col);
+            
+            if (seatId > 0) {
+                boolean success = busManager.cancelReservation(seatId, travelerId);
+                
+                if (success) {
+                    JOptionPane.showMessageDialog(this, "Reservation canceled!");
+                    viewBus(null); // Refresh the view
+                } else {
+                    JOptionPane.showMessageDialog(this, "Failed to cancel reservation.");
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Seat not found.");
             }
         } catch (SQLException ex) {
             JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
